@@ -78,7 +78,7 @@
             border-radius: 8px;
             background-color: #000;
             margin-top: 15px;
-            display: none; /* Se oculta hasta que haya video */
+            display: none;
         }
 
         .hidden {
@@ -114,7 +114,7 @@
         <h1>KzrCam - Monitor</h1>
         <p>Ingresa el código de la cámara:</p>
         <input type="text" id="connection-code" placeholder="Ej: 123456" autocomplete="off">
-        <button onclick="connectToCamera()">Conectar</button>
+        <button id="connect-btn" onclick="connectToCamera()">Conectar</button>
         <video id="remote-video" autoplay playsinline></video>
     </div>
 
@@ -122,7 +122,6 @@
         let peer;
         let localStream;
 
-        // Función para generar un código numérico aleatorio de 6 dígitos
         function generateSimpleCode() {
             return Math.floor(100000 + Math.random() * 900000).toString();
         }
@@ -134,10 +133,8 @@
             const joinCode = generateSimpleCode();
             document.getElementById('code-display').innerText = joinCode;
 
-            // Inicializar PeerJS con el código simple generado
             peer = new Peer(joinCode);
 
-            // Solicitar acceso a la cámara trasera
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true })
                 .then(stream => {
                     localStream = stream;
@@ -149,10 +146,13 @@
                     alert("Error al acceder a la cámara: " + err);
                 });
 
-            // Esperar a que el monitor se conecte
-            peer.on('call', call => {
-                // Responder a la llamada enviando nuestro stream de video
-                call.answer(localStream);
+            // Cuando el monitor se reporta mediante datos, le devolvemos la videollamada
+            peer.on('connection', conn => {
+                peer.call(conn.peer, localStream);
+            });
+
+            peer.on('error', err => {
+                console.error("Error PeerJS:", err);
             });
         }
 
@@ -160,8 +160,28 @@
             document.getElementById('menu-screen').classList.add('hidden');
             document.getElementById('monitor-screen').classList.remove('hidden');
             
-            // Inicializar PeerJS para el monitor (ID automático)
             peer = new Peer();
+
+            // Esperar recibir la videollamada de la cámara
+            peer.on('call', call => {
+                call.answer(); // Respondemos sin enviar nuestro video
+                call.on('stream', remoteStream => {
+                    const remoteVideo = document.getElementById('remote-video');
+                    remoteVideo.srcObject = remoteStream;
+                    remoteVideo.style.display = 'block';
+                    
+                    // Ocultar controles una vez conectado
+                    document.getElementById('connection-code').style.display = 'none';
+                    document.getElementById('connect-btn').style.display = 'none';
+                });
+            });
+
+            peer.on('error', err => {
+                const btn = document.getElementById('connect-btn');
+                btn.innerText = "Error, intentar de nuevo";
+                btn.disabled = false;
+                alert("Error de conexión: " + err.type);
+            });
         }
 
         function connectToCamera() {
@@ -171,13 +191,15 @@
                 return;
             }
 
-            // Llamar al dispositivo cámara usando el código
-            const call = peer.call(code, new MediaStream()); // Enviamos un stream vacío
+            const btn = document.getElementById('connect-btn');
+            btn.innerText = "Conectando...";
+            btn.disabled = true;
 
-            call.on('stream', remoteStream => {
-                const remoteVideo = document.getElementById('remote-video');
-                remoteVideo.srcObject = remoteStream;
-                remoteVideo.style.display = 'block';
+            // Solo hacemos un ping de datos a la cámara para que sepa nuestro ID y nos llame
+            const conn = peer.connect(code);
+            
+            conn.on('open', () => {
+                btn.innerText = "Recibiendo video...";
             });
         }
     </script>
