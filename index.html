@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KzrCam - Monitor de Seguridad</title>
+    <!-- Librería PeerJS para la conexión P2P -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --text-color: #ffffff;
+            --accent-color: #00ff88;
+            --container-bg: #1e1e1e;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background-color: var(--container-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        h1 {
+            color: var(--accent-color);
+            margin-bottom: 20px;
+        }
+
+        button {
+            background-color: var(--accent-color);
+            color: #000;
+            border: none;
+            padding: 12px 20px;
+            margin: 10px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            box-sizing: border-box;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #00cc6a;
+        }
+
+        input {
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 6px;
+            border: 1px solid #333;
+            background-color: #2a2a2a;
+            color: white;
+            width: calc(100% - 24px);
+            font-size: 16px;
+            text-align: center;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 8px;
+            background-color: #000;
+            margin-top: 15px;
+            display: none; /* Se oculta hasta que haya video */
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        #code-display {
+            font-size: 24px;
+            letter-spacing: 3px;
+            color: var(--accent-color);
+            margin: 15px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="menu-screen">
+        <h1>KzrCam</h1>
+        <p>Selecciona el modo de este dispositivo:</p>
+        <button onclick="startCameraMode()">Modo Cámara (Transmitir)</button>
+        <button onclick="startMonitorMode()">Modo Monitor (Ver)</button>
+    </div>
+
+    <div class="container hidden" id="camera-screen">
+        <h1>KzrCam - Transmitiendo</h1>
+        <p>Ingresa este código en el otro celular:</p>
+        <div id="code-display">Generando...</div>
+        <video id="local-video" autoplay muted playsinline></video>
+    </div>
+
+    <div class="container hidden" id="monitor-screen">
+        <h1>KzrCam - Monitor</h1>
+        <p>Ingresa el código de la cámara:</p>
+        <input type="text" id="connection-code" placeholder="Ej: 123456" autocomplete="off">
+        <button onclick="connectToCamera()">Conectar</button>
+        <video id="remote-video" autoplay playsinline></video>
+    </div>
+
+    <script>
+        let peer;
+        let localStream;
+
+        // Función para generar un código numérico aleatorio de 6 dígitos
+        function generateSimpleCode() {
+            return Math.floor(100000 + Math.random() * 900000).toString();
+        }
+
+        function startCameraMode() {
+            document.getElementById('menu-screen').classList.add('hidden');
+            document.getElementById('camera-screen').classList.remove('hidden');
+            
+            const joinCode = generateSimpleCode();
+            document.getElementById('code-display').innerText = joinCode;
+
+            // Inicializar PeerJS con el código simple generado
+            peer = new Peer(joinCode);
+
+            // Solicitar acceso a la cámara trasera
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true })
+                .then(stream => {
+                    localStream = stream;
+                    const localVideo = document.getElementById('local-video');
+                    localVideo.srcObject = stream;
+                    localVideo.style.display = 'block';
+                })
+                .catch(err => {
+                    alert("Error al acceder a la cámara: " + err);
+                });
+
+            // Esperar a que el monitor se conecte
+            peer.on('call', call => {
+                // Responder a la llamada enviando nuestro stream de video
+                call.answer(localStream);
+            });
+        }
+
+        function startMonitorMode() {
+            document.getElementById('menu-screen').classList.add('hidden');
+            document.getElementById('monitor-screen').classList.remove('hidden');
+            
+            // Inicializar PeerJS para el monitor (ID automático)
+            peer = new Peer();
+        }
+
+        function connectToCamera() {
+            const code = document.getElementById('connection-code').value;
+            if (!code) {
+                alert("Por favor, ingresa el código.");
+                return;
+            }
+
+            // Llamar al dispositivo cámara usando el código
+            const call = peer.call(code, new MediaStream()); // Enviamos un stream vacío
+
+            call.on('stream', remoteStream => {
+                const remoteVideo = document.getElementById('remote-video');
+                remoteVideo.srcObject = remoteStream;
+                remoteVideo.style.display = 'block';
+            });
+        }
+    </script>
+</body>
+</html>
